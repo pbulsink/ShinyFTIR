@@ -20,8 +20,7 @@ ui <- fluidPage(
     # Sidebar with a slider input for number of bins 
     sidebarLayout(
         sidebarPanel(
-          shiny::fileInput(inputId = "inputfile", label = "Select a .csv file", 
-                           multiple = FALSE,
+          shiny::fileInput(inputId = "inputfile", label = "Select a .csv file", multiple = TRUE,
                            accept = c("text/csv",
                                       "text/comma-separated-values,text/plain",
                                       ".csv")),
@@ -29,8 +28,7 @@ ui <- fluidPage(
           shiny::textInput(inputId = "plottitle", label = "Plot Title", placeholder = "FTIR Spectra", value = "FTIR Spectra"),
           shiny::textInput(inputId = "subtitle", label = "Subtitle (Optional)", placeholder = "Plotted with PlotFTIR"),
           tags$hr(),
-          shiny::textInput(inputId = "samplename", label = "Sample Name", placeholder = "FTIR Sample", value = "Sample"),
-          shiny::textInput(inputId = "legendtitle", label = "Legend Title", placeholder = "Sample ID", value = "Sample ID"),
+          shiny::textInput(inputId = "samplename", label = "Sample Name(s)", placeholder = "Separate names with ; or ,", value = "Sample"),
           shiny::radioButtons(inputId = "legendloc", label = "Legend Location", choices = c("Right Side", "Bottom"), inline = TRUE),
           tags$hr(),
           shiny::radioButtons(inputId = "lang", label = "Language/Langue", choices = c("English", "Français"), inline = TRUE),
@@ -55,8 +53,20 @@ server <- function(input, output) {
 
     plotInput <- reactive({
         if(!is.null(input$inputfile)){
-          file1 <- input$inputfile
-          ftir <- read_ftir(file1$datapath, sample_name = input$samplename)
+          if(nrow(input$inputfile) == 1){
+            file1 <- input$inputfile
+            ftir <- read_ftir(file1$datapath, sample_name = input$samplename)
+          } else {
+            path <- dirname(input$inputfile$datapath[1])
+            filenames <- basename(input$inputfile$datapath)
+            
+            samplenames <- strsplit(input$samplename, ",|;")[[1]]
+            if(length(samplenames) == length(filenames)){
+              ftir <- read_ftir_directory(path, filenames, sample_names = samplenames)
+            } else {
+              ftir <- read_ftir_directory(path, filenames, sample_names = input$inputfile$name)
+            }
+          }
         } else {
           ftir <- PlotFTIR::biodiesel
         }
@@ -69,11 +79,21 @@ server <- function(input, output) {
            ftir <- absorbance_to_transmittance(ftir)
          }
        }
-       p <- plot_ftir(ftir, plot_title = title, legend_title = input$legendtitle, lang = ifelse(input$lang == "English", "en", "fr"))
+       p <- plot_ftir(ftir, plot_title = title, lang = ifelse(input$lang == "English", "en", "fr"))
        if(input$legendloc == "Bottom") {
          p <- move_plot_legend(p, position = "bottom")
        }
        p
+    })
+    
+    output$plotRange <- reactive({
+      if(!is.null(input$inputfile)){
+        file1 <- input$inputfile
+        ftir <- read_ftir(file1$datapath, sample_name = input$samplename)
+      } else {
+        ftir <- PlotFTIR::biodiesel
+      }
+      return(range(ftir$wavenumber))
     })
     
     output$downloadPlot <- downloadHandler(
